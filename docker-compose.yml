@@ -1,0 +1,10 @@
+version: '3.3'
+
+services:
+  tg-bot-service:
+    image: dnevsky/tg-bot-service
+    container_name: tg-bot-service
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
