@@ -6,5 +6,6 @@ services:
     container_name: tg-bot-service
     env_file:
       - .env
+    restart: always
     volumes:
       - ./data:/app/data
