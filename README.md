@@ -5,6 +5,7 @@
 Бот реализован с использованием библиотеки для работы с API telegram - `github.com/go-telegram-bot-api/telegram-bot-api`
 
 ~~Данные хранятся в директории `data`~~
+
 upd 01.07: теперь данные хранятся в СУБД PostgreSQL. Пока что не решена проблема с хранением паролей в незашифрованном виде
 
 Так же собранный образ приложения хранится на hub.docker.com - `docker pull dnevsky/tg-bot-service`
