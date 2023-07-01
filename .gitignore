@@ -1,3 +1,4 @@
 .vs
 .env
 data/*.txt
+.database

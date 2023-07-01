@@ -1,37 +1,46 @@
 package tg
 
 import (
+	"context"
 	"fmt"
 	"log"
-	"os"
 
+	"github.com/dnevsky/tg-bot-service/repos"
 	tgapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
 type TGBotApi struct {
-	bot *tgapi.BotAPI
+	bot   *tgapi.BotAPI
+	repos *repos.Repos
 }
 
 func NewTGBotApi(token string) (*TGBotApi, error) {
-	bot, err := tgapi.NewBotAPI(os.Getenv("TG_TOKEN"))
+	bot, err := tgapi.NewBotAPI(token)
 	if err != nil {
 		fmt.Printf("Не удалось инициализировать бота.\n%s", err.Error())
 		return nil, err
 	}
 
-	bot.Debug = true
+	bot.Debug = false
 
 	return &TGBotApi{bot: bot}, nil
 }
 
-func (t *TGBotApi) StartLongPoll() {
+func (t *TGBotApi) StartLongPoll(ctx context.Context, repos *repos.Repos) {
+	t.repos = repos
 	updateConfig := tgapi.NewUpdate(0)
 	updateConfig.Timeout = 30
 
 	updates := t.bot.GetUpdatesChan(updateConfig)
 
-	for update := range updates {
-		go t.handler(update)
+	for {
+		select {
+		case update := <-updates:
+			go t.handler(ctx, update)
+		case <-ctx.Done():
+			log.Println("Stopping longpoll...")
+			return
+		}
 	}
 }
 

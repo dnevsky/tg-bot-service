@@ -16,6 +16,7 @@ FROM scratch
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=builder /app/tg-bot-service /app/tg-bot-service
 COPY --from=builder /app/data /app/data
+COPY --from=builder /app/configs /app/configs
 
 WORKDIR /app
 

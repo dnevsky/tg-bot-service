@@ -7,5 +7,24 @@ services:
     env_file:
       - .env
     restart: always
+    depends_on:
+      - postgres
     volumes:
       - ./data:/app/data
+
+  postgres:
+    image: postgres:15.2-alpine
+    container_name: postgres
+    restart: always
+    env_file:
+      - .env
+    volumes:
+      - ./.database/postgres/data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  migrate-postgres:
+    image: migrate/migrate
+    volumes:
+      - ./repos/postgres/migrations:/migrations
+    command: ["-path", "./migrations", "-database", "postgres://postgres:qwerty@postgres:5432/services?sslmode=disable", "up"] 

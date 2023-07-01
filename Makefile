@@ -1,4 +1,4 @@
-.PHONY: build run shutdown
+.PHONY: build run shutdown postgres create-migrate migrate
 
 build:
 	docker build --tag dnevsky/tg-bot-service .
@@ -8,3 +8,12 @@ run:
 
 shutdown:
 	docker-compose down
+
+postgres:
+	docker-compose up -d postgres
+
+create-migrate:
+	migrate create -ext sql -dir ./repos/postgres/migrations -seq <name>
+
+migrate:
+	docker-compose run migrate-postgres

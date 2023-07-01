@@ -1,10 +1,11 @@
 package tg
 
 import (
+	"context"
+	"database/sql"
 	"errors"
 	"fmt"
-	"io/ioutil"
-	"os"
+	"log"
 	"regexp"
 	"strings"
 	"time"
@@ -16,13 +17,22 @@ var (
 	dur = time.Minute
 )
 
-func (t *TGBotApi) handler(update tgapi.Update) {
+func (t *TGBotApi) handler(ctx context.Context, update tgapi.Update) {
+	select {
+	case <-ctx.Done():
+		log.Println("Handler canceled. Exiting...")
+		return
+	default:
+		// работаем
+	}
+
 	// даём знать, что мы работаем ток с сообщениями
 	if update.Message == nil {
 		return
 	}
 
 	cmd := update.Message.Text
+	log.Println(update.Message.From.ID, cmd)
 
 	switch {
 	case strings.HasPrefix(cmd, "/help"):
@@ -43,9 +53,11 @@ func (t *TGBotApi) handler(update tgapi.Update) {
 		login := words[2]
 		password := words[3]
 
-		err := saveService(update.Message.From.ID, service, login, password)
+		err := t.repos.Save(update.Message.From.ID, service, login, password)
 		if err != nil {
 			t.SendMessage(update.Message.From.ID, err.Error())
+			log.Println(err.Error())
+			return
 		}
 
 		msg := t.SendMessage(update.Message.Chat.ID, "Успешно сохранено.")
@@ -54,23 +66,23 @@ func (t *TGBotApi) handler(update tgapi.Update) {
 		go t.deleteMessageAfter(update.Message.Chat.ID, update.Message.MessageID, dur)
 
 	case strings.HasPrefix(cmd, "/getall"):
-		services, err := getAll(update.Message.From.ID)
+		services, err := t.repos.GetAll(update.Message.From.ID)
 		if err != nil {
-
 			t.SendMessage(update.Message.From.ID, err.Error())
+			log.Println(err.Error())
 			return
 		}
 
-		msg := "list of all services:\n\n"
+		msg := "Список всех сервисов:\n\n"
 
 		if len(services) == 0 {
-			msg = msg + "not found"
+			msg = msg + "Сервисов нет"
 			t.SendMessage(update.Message.From.ID, msg)
 			return
 		}
 
 		for _, service := range services {
-			login, _, _ := readService(update.Message.From.ID, service)
+			login, _, _ := t.repos.Read(update.Message.From.ID, service)
 			msg = fmt.Sprintf("%s%s %s\n", msg, service, login)
 		}
 
@@ -85,10 +97,10 @@ func (t *TGBotApi) handler(update tgapi.Update) {
 			return
 		}
 
-		login, password, err := readService(update.Message.From.ID, words[1])
+		login, password, err := t.repos.Read(update.Message.From.ID, words[1])
 		if err != nil {
 			var msgText string
-			if errors.Is(err, os.ErrNotExist) {
+			if errors.Is(err, sql.ErrNoRows) {
 				msgText = "Сервис не найден."
 			} else {
 				msgText = fmt.Sprintf("Произошла ошибка во время чтения информации.\n%s", err.Error())
@@ -115,10 +127,10 @@ func (t *TGBotApi) handler(update tgapi.Update) {
 			return
 		}
 
-		err := deleteService(update.Message.From.ID, words[1])
+		err := t.repos.Delete(update.Message.From.ID, words[1])
 		if err != nil {
 			var msgText string
-			if errors.Is(err, os.ErrNotExist) {
+			if errors.Is(err, sql.ErrNoRows) {
 				msgText = "Сервис не найден."
 			} else {
 				msgText = fmt.Sprintf("Произошла ошибка во время удаления информации.\n%s", err.Error())
@@ -137,86 +149,6 @@ func (t *TGBotApi) handler(update tgapi.Update) {
 func regexMatchString(pattern string, s string) (result bool) {
 	ok, _ := regexp.MatchString(pattern, s)
 	return ok
-}
-
-func saveService(from int64, service, login, password string) error {
-	filename := fmt.Sprintf("data/user_%d_%s.txt", from, service)
-
-	file, err := os.Create(filename)
-	if err != nil {
-		return errors.New(fmt.Sprintf("Не удалось создать новый файл.\n%s", err.Error()))
-	}
-	defer file.Close()
-
-	content := fmt.Sprintf("ID: %d\nService: %s\nUsername: %s\nPassword: %s",
-		from, service, login, password)
-
-	if err := ioutil.WriteFile(filename, []byte(content), 0600); err != nil {
-		return errors.New(fmt.Sprintf("Не удалось записать данные в файл.\n%s", err.Error()))
-	}
-
-	return nil
-}
-
-func readService(from int64, service string) (string, string, error) {
-	filename := fmt.Sprintf("data/user_%d_%s.txt", from, service)
-
-	content, err := ioutil.ReadFile(filename)
-	if err != nil {
-		return "", "", err
-	}
-
-	lines := strings.Split(string(content), "\n")
-
-	var login, password string
-	for _, line := range lines {
-		pair := strings.SplitN(line, ": ", 2)
-
-		if len(pair) != 2 {
-			continue
-		}
-
-		switch pair[0] {
-		case "Username":
-			login = pair[1]
-		case "Password":
-			password = pair[1]
-		}
-	}
-
-	return login, password, nil
-}
-
-func deleteService(from int64, service string) error {
-	filename := fmt.Sprintf("data/user_%d_%s.txt", from, service)
-
-	if err := os.Remove(filename); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func getAll(from int64) ([]string, error) {
-	pattern := fmt.Sprintf("user_%d_", from)
-
-	files, err := ioutil.ReadDir("data")
-	if err != nil {
-		return nil, err
-	}
-
-	services := []string{}
-
-	for _, file := range files {
-		if !file.IsDir() && strings.HasPrefix(file.Name(), pattern) {
-			service := strings.TrimPrefix(file.Name(), pattern)
-			service = strings.TrimSuffix(service, ".txt")
-
-			services = append(services, service)
-		}
-	}
-
-	return services, nil
 }
 
 func (t *TGBotApi) deleteMessageAfter(chat_id int64, message_id int, duration time.Duration) {
